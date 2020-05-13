@@ -1,4 +1,4 @@
-module github.com/kubeflow/pipelines
+module github.com/brutkowski/pipelines
 
 require (
 	cloud.google.com/go v0.44.3 // indirect
