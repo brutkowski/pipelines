@@ -17,8 +17,10 @@
 import { Api, GetArtifactTypesResponse } from '@kubeflow/frontend';
 import { mount, ReactWrapper, shallow, ShallowWrapper } from 'enzyme';
 import * as React from 'react';
+import { render } from '@testing-library/react';
+import { createMemoryHistory } from 'history';
 import { Workflow } from 'third_party/argo-ui/argo_template';
-import { ApiRelationship, ApiResourceType, ApiRunDetail, RunStorageState } from '../apis/run';
+import { ApiResourceType, ApiRunDetail, RunStorageState } from '../apis/run';
 import { QUERY_PARAMS, RoutePage, RouteParams } from '../components/Router';
 import { PlotType } from '../components/viewers/Viewer';
 import { Apis } from '../lib/Apis';
@@ -27,9 +29,24 @@ import { OutputArtifactLoader } from '../lib/OutputArtifactLoader';
 import { NodePhase } from '../lib/StatusUtils';
 import * as Utils from '../lib/Utils';
 import WorkflowParser from '../lib/WorkflowParser';
-import TestUtils, { diff } from '../TestUtils';
+import TestUtils from '../TestUtils';
 import { PageProps } from './Page';
-import { RunDetails, RunDetailsInternalProps } from './RunDetails';
+import EnhancedRunDetails, { TEST_ONLY, RunDetailsInternalProps } from './RunDetails';
+import { Router } from 'react-router-dom';
+import { NamespaceContext } from 'src/lib/KubeflowClient';
+
+const RunDetails = TEST_ONLY.RunDetails;
+
+const STEP_TABS = {
+  INPUT_OUTPUT: 0,
+  VISUALIZATIONS: 1,
+  ML_METADATA: 2,
+  VOLUMES: 3,
+  LOGS: 4,
+  POD: 5,
+  EVENTS: 6,
+  MANIFEST: 7,
+};
 
 const NODE_DETAILS_SELECTOR = '[data-testid="run-details-node-details"]';
 describe('RunDetails', () => {
@@ -131,9 +148,11 @@ describe('RunDetails', () => {
   });
 
   afterEach(async () => {
-    // unmount() should be called before resetAllMocks() in case any part of the unmount life cycle
-    // depends on mocks/spies
-    await tree.unmount();
+    if (tree && tree.exists()) {
+      // unmount() should be called before resetAllMocks() in case any part of the unmount life cycle
+      // depends on mocks/spies
+      await tree.unmount();
+    }
     jest.resetAllMocks();
     jest.restoreAllMocks();
   });
@@ -380,7 +399,7 @@ describe('RunDetails', () => {
     await TestUtils.flushPromises();
     expect(updateToolbarSpy).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        breadcrumbs: [{ displayName: 'Archive', href: RoutePage.ARCHIVE }],
+        breadcrumbs: [{ displayName: 'Archive', href: RoutePage.ARCHIVED_RUNS }],
       }),
     );
   });
@@ -618,7 +637,12 @@ describe('RunDetails', () => {
       'phaseMessage',
       'This step is in ' + testRun.run!.status + ' state with this message: some test message',
     );
-    expect(tree).toMatchSnapshot();
+    expect(tree.find('Banner')).toMatchInlineSnapshot(`
+      <Banner
+        message="This step is in Succeeded state with this message: some test message"
+        mode="warning"
+      />
+    `);
   });
 
   it('shows clicked node output in side pane', async () => {
@@ -684,9 +708,9 @@ describe('RunDetails', () => {
     tree
       .find('MD2Tabs')
       .at(1)
-      .simulate('switch', 1);
+      .simulate('switch', STEP_TABS.INPUT_OUTPUT);
     await TestUtils.flushPromises();
-    expect(tree.state('sidepanelSelectedTab')).toEqual(1);
+    expect(tree.state('sidepanelSelectedTab')).toEqual(STEP_TABS.INPUT_OUTPUT);
     expect(tree).toMatchSnapshot();
   });
 
@@ -701,8 +725,8 @@ describe('RunDetails', () => {
     tree
       .find('MD2Tabs')
       .at(1)
-      .simulate('switch', 2);
-    expect(tree.state('sidepanelSelectedTab')).toEqual(2);
+      .simulate('switch', STEP_TABS.VOLUMES);
+    expect(tree.state('sidepanelSelectedTab')).toEqual(STEP_TABS.VOLUMES);
     expect(tree).toMatchSnapshot();
   });
 
@@ -717,8 +741,8 @@ describe('RunDetails', () => {
     tree
       .find('MD2Tabs')
       .at(1)
-      .simulate('switch', 3);
-    expect(tree.state('sidepanelSelectedTab')).toEqual(3);
+      .simulate('switch', STEP_TABS.MANIFEST);
+    expect(tree.state('sidepanelSelectedTab')).toEqual(STEP_TABS.MANIFEST);
     expect(tree).toMatchSnapshot();
   });
 
@@ -749,14 +773,14 @@ describe('RunDetails', () => {
     tree
       .find('MD2Tabs')
       .at(1)
-      .simulate('switch', 4);
+      .simulate('switch', STEP_TABS.LOGS);
     expect(tree.state('selectedNodeDetails')).toHaveProperty('id', 'node1');
-    expect(tree.state('sidepanelSelectedTab')).toEqual(4);
+    expect(tree.state('sidepanelSelectedTab')).toEqual(STEP_TABS.LOGS);
 
     await (tree.instance() as RunDetails).refresh();
     expect(getRunSpy).toHaveBeenCalledTimes(2);
     expect(tree.state('selectedNodeDetails')).toHaveProperty('id', 'node1');
-    expect(tree.state('sidepanelSelectedTab')).toEqual(4);
+    expect(tree.state('sidepanelSelectedTab')).toEqual(STEP_TABS.LOGS);
   });
 
   it('keeps side pane open and on same tab when more nodes are added after refresh', async () => {
@@ -775,14 +799,14 @@ describe('RunDetails', () => {
     tree
       .find('MD2Tabs')
       .at(1)
-      .simulate('switch', 4);
+      .simulate('switch', STEP_TABS.LOGS);
     expect(tree.state('selectedNodeDetails')).toHaveProperty('id', 'node1');
-    expect(tree.state('sidepanelSelectedTab')).toEqual(4);
+    expect(tree.state('sidepanelSelectedTab')).toEqual(STEP_TABS.LOGS);
 
     await (tree.instance() as RunDetails).refresh();
     expect(getRunSpy).toHaveBeenCalledTimes(2);
     expect(tree.state('selectedNodeDetails')).toHaveProperty('id', 'node1');
-    expect(tree.state('sidepanelSelectedTab')).toEqual(4);
+    expect(tree.state('sidepanelSelectedTab')).toEqual(STEP_TABS.LOGS);
   });
 
   it('keeps side pane open and on same tab when run status changes, shows new status', async () => {
@@ -796,9 +820,9 @@ describe('RunDetails', () => {
     tree
       .find('MD2Tabs')
       .at(1)
-      .simulate('switch', 4);
+      .simulate('switch', STEP_TABS.LOGS);
     expect(tree.state('selectedNodeDetails')).toHaveProperty('id', 'node1');
-    expect(tree.state('sidepanelSelectedTab')).toEqual(4);
+    expect(tree.state('sidepanelSelectedTab')).toEqual(STEP_TABS.LOGS);
     expect(updateToolbarSpy).toHaveBeenCalledTimes(3);
 
     const thirdCall = updateToolbarSpy.mock.calls[2][0];
@@ -821,7 +845,7 @@ describe('RunDetails', () => {
     tree
       .find('MD2Tabs')
       .at(1)
-      .simulate('switch', 4);
+      .simulate('switch', STEP_TABS.LOGS);
     expect(tree.state('selectedNodeDetails')).toHaveProperty('phaseMessage', undefined);
 
     testRun.pipeline_runtime!.workflow_manifest = JSON.stringify({
@@ -849,7 +873,7 @@ describe('RunDetails', () => {
     tree
       .find('MD2Tabs')
       .at(1)
-      .simulate('switch', 4);
+      .simulate('switch', STEP_TABS.LOGS);
     expect(tree.state('selectedNodeDetails')).toHaveProperty(
       'phaseMessage',
       'This step is in Succeeded state with this message: some node message',
@@ -938,8 +962,8 @@ describe('RunDetails', () => {
       tree
         .find('MD2Tabs')
         .at(1)
-        .simulate('switch', 4);
-      expect(tree.state('sidepanelSelectedTab')).toEqual(4);
+        .simulate('switch', STEP_TABS.LOGS);
+      expect(tree.state('sidepanelSelectedTab')).toEqual(STEP_TABS.LOGS);
       expect(tree).toMatchSnapshot();
     });
 
@@ -954,7 +978,7 @@ describe('RunDetails', () => {
       tree
         .find('MD2Tabs')
         .at(1)
-        .simulate('switch', 4);
+        .simulate('switch', STEP_TABS.LOGS);
       await getPodLogsSpy;
       expect(getPodLogsSpy).toHaveBeenCalledTimes(1);
       expect(getPodLogsSpy).toHaveBeenLastCalledWith('node1', undefined);
@@ -977,7 +1001,7 @@ describe('RunDetails', () => {
       tree
         .find('MD2Tabs')
         .at(1)
-        .simulate('switch', 4);
+        .simulate('switch', STEP_TABS.LOGS);
       await getPodLogsSpy;
       await TestUtils.flushPromises();
       expect(tree.find(NODE_DETAILS_SELECTOR)).toMatchInlineSnapshot(`
@@ -1021,14 +1045,9 @@ describe('RunDetails', () => {
 
     it("loads logs in run's namespace", async () => {
       testRun.pipeline_runtime!.workflow_manifest = JSON.stringify({
+        metadata: { namespace: 'username' },
         status: { nodes: { node1: { id: 'node1' } } },
       });
-      testRun.run!.resource_references = [
-        {
-          key: { type: ApiResourceType.NAMESPACE, id: 'username' },
-          relationship: ApiRelationship.OWNER,
-        },
-      ];
       tree = shallow(<RunDetails {...generateProps()} />);
       await getRunSpy;
       await TestUtils.flushPromises();
@@ -1036,7 +1055,7 @@ describe('RunDetails', () => {
       tree
         .find('MD2Tabs')
         .at(1)
-        .simulate('switch', 4);
+        .simulate('switch', STEP_TABS.LOGS);
       await getPodLogsSpy;
       expect(getPodLogsSpy).toHaveBeenCalledTimes(1);
       expect(getPodLogsSpy).toHaveBeenLastCalledWith('node1', 'username');
@@ -1059,7 +1078,7 @@ describe('RunDetails', () => {
       tree
         .find('MD2Tabs')
         .at(1)
-        .simulate('switch', 4);
+        .simulate('switch', STEP_TABS.LOGS);
       await getPodLogsSpy;
       await TestUtils.flushPromises();
       expect(tree.find(NODE_DETAILS_SELECTOR)).toMatchInlineSnapshot(`
@@ -1108,7 +1127,7 @@ describe('RunDetails', () => {
       tree
         .find('MD2Tabs')
         .at(1)
-        .simulate('switch', 4);
+        .simulate('switch', STEP_TABS.LOGS);
       await getPodLogsSpy;
       await TestUtils.flushPromises();
       expect(tree.find('[data-testid="run-details-node-details"]')).toMatchInlineSnapshot(`
@@ -1148,7 +1167,7 @@ describe('RunDetails', () => {
       tree
         .find('MD2Tabs')
         .at(1)
-        .simulate('switch', 4);
+        .simulate('switch', STEP_TABS.LOGS);
       await getPodLogsSpy;
       await TestUtils.flushPromises();
       expect(getPodLogsSpy).not.toHaveBeenCalled();
@@ -1170,9 +1189,9 @@ describe('RunDetails', () => {
       tree
         .find('MD2Tabs')
         .at(1)
-        .simulate('switch', 4);
+        .simulate('switch', STEP_TABS.LOGS);
       expect(tree.state('selectedNodeDetails')).toHaveProperty('id', 'node1');
-      expect(tree.state('sidepanelSelectedTab')).toEqual(4);
+      expect(tree.state('sidepanelSelectedTab')).toEqual(STEP_TABS.LOGS);
 
       getPodLogsSpy.mockImplementationOnce(() => 'new test logs');
       await (tree.instance() as RunDetails).refresh();
@@ -1191,7 +1210,7 @@ describe('RunDetails', () => {
       tree
         .find('MD2Tabs')
         .at(1)
-        .simulate('switch', 4);
+        .simulate('switch', STEP_TABS.LOGS);
       await getPodLogsSpy;
       await TestUtils.flushPromises();
       expect(tree.state()).toMatchObject({
@@ -1310,6 +1329,74 @@ describe('RunDetails', () => {
       await TestUtils.flushPromises();
 
       expect(setInterval).toHaveBeenCalledTimes(0);
+    });
+  });
+
+  describe('EnhancedRunDetails', () => {
+    it('redirects to experiments page when namespace changes', () => {
+      const history = createMemoryHistory({
+        initialEntries: ['/does-not-matter'],
+      });
+      const { rerender } = render(
+        <Router history={history}>
+          <NamespaceContext.Provider value='ns1'>
+            <EnhancedRunDetails {...generateProps()} />
+          </NamespaceContext.Provider>
+        </Router>,
+      );
+      expect(history.location.pathname).not.toEqual('/experiments');
+      rerender(
+        <Router history={history}>
+          <NamespaceContext.Provider value='ns2'>
+            <EnhancedRunDetails {...generateProps()} />
+          </NamespaceContext.Provider>
+        </Router>,
+      );
+      expect(history.location.pathname).toEqual('/experiments');
+    });
+
+    it('does not redirect when namespace stays the same', () => {
+      const history = createMemoryHistory({
+        initialEntries: ['/initial-path'],
+      });
+      const { rerender } = render(
+        <Router history={history}>
+          <NamespaceContext.Provider value='ns1'>
+            <EnhancedRunDetails {...generateProps()} />
+          </NamespaceContext.Provider>
+        </Router>,
+      );
+      expect(history.location.pathname).toEqual('/initial-path');
+      rerender(
+        <Router history={history}>
+          <NamespaceContext.Provider value='ns1'>
+            <EnhancedRunDetails {...generateProps()} />
+          </NamespaceContext.Provider>
+        </Router>,
+      );
+      expect(history.location.pathname).toEqual('/initial-path');
+    });
+
+    it('does not redirect when namespace initializes', () => {
+      const history = createMemoryHistory({
+        initialEntries: ['/initial-path'],
+      });
+      const { rerender } = render(
+        <Router history={history}>
+          <NamespaceContext.Provider value={undefined}>
+            <EnhancedRunDetails {...generateProps()} />
+          </NamespaceContext.Provider>
+        </Router>,
+      );
+      expect(history.location.pathname).toEqual('/initial-path');
+      rerender(
+        <Router history={history}>
+          <NamespaceContext.Provider value='ns1'>
+            <EnhancedRunDetails {...generateProps()} />
+          </NamespaceContext.Provider>
+        </Router>,
+      );
+      expect(history.location.pathname).toEqual('/initial-path');
     });
   });
 });

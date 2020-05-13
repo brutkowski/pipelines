@@ -22,7 +22,7 @@ from typing import Union, List, Any, Callable, TypeVar, Dict
 from ._k8s_helper import convert_k8s_obj_to_json
 from .. import dsl
 from ..dsl._container_op import BaseOp
-from ..dsl._artifact_location import ArtifactLocation
+
 
 # generics
 T = TypeVar('T')
@@ -155,7 +155,7 @@ def _outputs_to_json(op: BaseOp,
     else:
         value_from_key = "path"
     output_parameters = []
-    for param in outputs.values():
+    for param in set(outputs.values()):  # set() dedupes output references
         output_parameters.append({
             'name': param.full_name,
             'valueFrom': {
@@ -187,12 +187,7 @@ def _op_to_template(op: BaseOp):
         output_artifact_paths.update(sorted(((param.full_name, processed_op.file_outputs[param.name]) for param in processed_op.outputs.values()), key=lambda x: x[0]))
 
         output_artifacts = [
-             convert_k8s_obj_to_json(
-                 ArtifactLocation.create_artifact_for_s3(
-                     op.artifact_location, 
-                     name=name, 
-                     path=path, 
-                     key='runs/{{workflow.uid}}/{{pod.name}}/' + name + '.tgz'))
+            {'name': name, 'path': path}
             for name, path in output_artifact_paths.items()
         ]
 
@@ -281,6 +276,9 @@ def _op_to_template(op: BaseOp):
 
     if isinstance(op, dsl.ContainerOp) and op._metadata:
         template.setdefault('metadata', {}).setdefault('annotations', {})['pipelines.kubeflow.org/component_spec'] = json.dumps(op._metadata.to_dict(), sort_keys=True)
+
+    if hasattr(op, '_component_ref'):
+        template.setdefault('metadata', {}).setdefault('annotations', {})['pipelines.kubeflow.org/component_ref'] = json.dumps(op._component_ref.to_dict(), sort_keys=True)
 
     if isinstance(op, dsl.ContainerOp) and op.execution_options:
         if op.execution_options.caching_strategy.max_cache_staleness:

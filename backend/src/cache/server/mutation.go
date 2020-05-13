@@ -34,6 +34,8 @@ import (
 const (
 	KFPCacheEnabledLabelKey   string = "pipelines.kubeflow.org/cache_enabled"
 	KFPCacheEnabledLabelValue string = "true"
+	KFPCachedLabelKey         string = "pipelines.kubeflow.org/reused_from_cache"
+	KFPCachedLabelValue       string = "true"
 	ArgoWorkflowNodeName      string = "workflows.argoproj.io/node-name"
 	ArgoWorkflowTemplate      string = "workflows.argoproj.io/template"
 	ExecutionKey              string = "pipelines.kubeflow.org/execution_cache_key"
@@ -107,9 +109,14 @@ func MutatePodIfCached(req *v1beta1.AdmissionRequest, clientMgr ClientManagerInt
 
 	annotations[ExecutionKey] = executionHashKey
 	labels[CacheIDLabelKey] = ""
+	var maxCacheStalenessInSeconds int64 = -1
+	maxCacheStaleness, exists := annotations[MaxCacheStalenessKey]
+	if exists {
+		maxCacheStalenessInSeconds = getMaxCacheStaleness(maxCacheStaleness)
+	}
 
 	var cachedExecution *model.ExecutionCache
-	cachedExecution, err = clientMgr.CacheStore().GetExecutionCache(executionHashKey)
+	cachedExecution, err = clientMgr.CacheStore().GetExecutionCache(executionHashKey, maxCacheStalenessInSeconds)
 	if err != nil {
 		log.Println(err.Error())
 	}
@@ -119,6 +126,9 @@ func MutatePodIfCached(req *v1beta1.AdmissionRequest, clientMgr ClientManagerInt
 
 		annotations[ArgoWorkflowOutputs] = getValueFromSerializedMap(cachedExecution.ExecutionOutput, ArgoWorkflowOutputs)
 		labels[CacheIDLabelKey] = strconv.FormatInt(cachedExecution.ID, 10)
+		labels[KFPCachedLabelKey] = KFPCachedLabelValue // This label indicates the pod is taken from cache.
+		
+		// These labels cache results for metadata-writer.
 		labels[MetadataExecutionIDKey] = getValueFromSerializedMap(cachedExecution.ExecutionOutput, MetadataExecutionIDKey)
 		labels[MetadataWrittenKey] = "true"
 

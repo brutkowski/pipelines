@@ -1,10 +1,10 @@
 x-google-marketplace:
   schemaVersion: v2
   applicationApiVersion: v1beta1
-  publishedVersion: '0.3.0'
+  publishedVersion: '0.5.1'
   publishedVersionMetadata:
     releaseNote: >-
-      Based on 0.3.0 version.
+      Based on 0.5.1 version.
     releaseTypes:
       - Feature
     recommended: false
@@ -77,13 +77,21 @@ x-google-marketplace:
       properties:
         images.metadatawriter:
           type: FULL
+    cacheserver:
+      properties:
+        images.cacheserver:
+          type: FULL
+    cachedeployer:
+      properties:
+        images.cachedeployer:
+          type: FULL
   deployerServiceAccount:
     roles:
       - type: ClusterRole        # This is a cluster-wide ClusterRole
         rulesType: CUSTOM        # We specify our own custom RBAC roles
         rules:
-          - apiGroups: ['apiextensions.k8s.io']
-            resources: ['customresourcedefinitions']
+          - apiGroups: ['apiextensions.k8s.io', 'rbac.authorization.k8s.io']
+            resources: ['customresourcedefinitions', 'clusterroles', 'clusterrolebindings']
             verbs: ['*']
   clusterConstraints:
     resources:
@@ -153,12 +161,6 @@ properties:
       If the prefix specified is same as an old deployment in the past,
       the deployment will recover from an old deployment.
       If this not specified, the app instance name will be used.
-  managedstorage.gcsProjectId:
-    type: string
-    title: GCS Bucket's project ID (Managed storage only)
-    description: |-
-      Normally it's the same project which installs Kubeflow Pipelines.
-      It's required if enabled managed storage.
 
 required:
   - name

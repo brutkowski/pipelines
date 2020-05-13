@@ -15,7 +15,6 @@
 package resource
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -310,6 +309,27 @@ func TestCreateRun_ThroughPipelineID(t *testing.T) {
 	apiExperiment := &api.Experiment{Name: "e1"}
 	experiment, err := manager.CreateExperiment(apiExperiment)
 	assert.Nil(t, err)
+
+	// Create a new pipeline version with UUID being FakeUUID.
+	pipelineStore, ok := store.pipelineStore.(*storage.PipelineStore)
+	assert.True(t, ok)
+	pipelineStore.SetUUIDGenerator(util.NewFakeUUIDGeneratorOrFatal(FakeUUIDOne, nil))
+	version, err := manager.CreatePipelineVersion(&api.PipelineVersion{
+		Name: "version_for_run",
+		ResourceReferences: []*api.ResourceReference{
+			&api.ResourceReference{
+				Key: &api.ResourceKey{
+					Id:   p.UUID,
+					Type: api.ResourceType_PIPELINE,
+				},
+				Relationship: api.Relationship_OWNER,
+			},
+		},
+	}, []byte(testWorkflow.ToStringForStore()))
+	assert.Nil(t, err)
+
+	// The pipeline specified via pipeline id will be converted to this
+	// pipeline's default version, which will be used to create run.
 	apiRun := &api.Run{
 		Name: "run1",
 		PipelineSpec: &api.PipelineSpec{
@@ -342,8 +362,9 @@ func TestCreateRun_ThroughPipelineID(t *testing.T) {
 			DisplayName:    "run1",
 			Name:           "workflow-name",
 			Namespace:      "ns1",
+			ServiceAccount: "pipeline-runner",
 			StorageState:   api.Run_STORAGESTATE_AVAILABLE.String(),
-			CreatedAtInSec: 3,
+			CreatedAtInSec: 4,
 			Conditions:     "Running",
 			PipelineSpec: model.PipelineSpec{
 				PipelineId:           p.UUID,
@@ -359,6 +380,14 @@ func TestCreateRun_ThroughPipelineID(t *testing.T) {
 					ReferenceName: "e1",
 					ReferenceType: common.Experiment,
 					Relationship:  common.Owner,
+				},
+				{
+					ResourceUUID:  "123e4567-e89b-12d3-a456-426655440000",
+					ResourceType:  common.Run,
+					ReferenceUUID: version.UUID,
+					ReferenceName: version.Name,
+					ReferenceType: common.PipelineVersion,
+					Relationship:  common.Creator,
 				},
 			},
 		},
@@ -389,6 +418,7 @@ func TestCreateRun_ThroughWorkflowSpec(t *testing.T) {
 			DisplayName:    "run1",
 			Name:           "workflow-name",
 			Namespace:      "ns1",
+			ServiceAccount: "pipeline-runner",
 			StorageState:   api.Run_STORAGESTATE_AVAILABLE.String(),
 			CreatedAtInSec: 2,
 			Conditions:     "Running",
@@ -437,6 +467,7 @@ func TestCreateRun_ThroughWorkflowSpecWithPatch(t *testing.T) {
 			DisplayName:    "run1",
 			Name:           "workflow-name",
 			Namespace:      "ns1",
+			ServiceAccount: "pipeline-runner",
 			StorageState:   api.Run_STORAGESTATE_AVAILABLE.String(),
 			CreatedAtInSec: 2,
 			Conditions:     "Running",
@@ -504,6 +535,7 @@ func TestCreateRun_ThroughPipelineVersion(t *testing.T) {
 				Relationship: api.Relationship_CREATOR,
 			},
 		},
+		ServiceAccount: "sa1",
 	}
 	runDetail, err := manager.CreateRun(apiRun)
 	assert.Nil(t, err)
@@ -513,7 +545,7 @@ func TestCreateRun_ThroughPipelineVersion(t *testing.T) {
 		{Name: "param1", Value: util.StringPointer("world")}}
 	expectedRuntimeWorkflow.Labels = map[string]string{util.LabelKeyWorkflowRunId: "123e4567-e89b-12d3-a456-426655440000"}
 	expectedRuntimeWorkflow.Annotations = map[string]string{util.AnnotationKeyRunName: "run1"}
-	expectedRuntimeWorkflow.Spec.ServiceAccountName = defaultPipelineRunnerServiceAccount
+	expectedRuntimeWorkflow.Spec.ServiceAccountName = "sa1"
 
 	expectedRunDetail := &model.RunDetail{
 		Run: model.Run{
@@ -522,6 +554,7 @@ func TestCreateRun_ThroughPipelineVersion(t *testing.T) {
 			DisplayName:    "run1",
 			Name:           "workflow-name",
 			Namespace:      "ns1",
+			ServiceAccount: "sa1",
 			StorageState:   api.Run_STORAGESTATE_AVAILABLE.String(),
 			CreatedAtInSec: 4,
 			Conditions:     "Running",
@@ -879,6 +912,7 @@ func TestCreateJob_ThroughWorkflowSpec(t *testing.T) {
 		DisplayName:    "j1",
 		Name:           "j1",
 		Namespace:      "ns1",
+		ServiceAccount: "pipeline-runner",
 		Enabled:        true,
 		CreatedAtInSec: 2,
 		UpdatedAtInSec: 2,
@@ -921,15 +955,37 @@ func TestCreateJob_ThroughPipelineID(t *testing.T) {
 			},
 		},
 	}
+
+	// Create a new pipeline version with UUID being FakeUUID.
+	pipelineStore, ok := store.pipelineStore.(*storage.PipelineStore)
+	assert.True(t, ok)
+	pipelineStore.SetUUIDGenerator(util.NewFakeUUIDGeneratorOrFatal(FakeUUIDOne, nil))
+	version, err := manager.CreatePipelineVersion(&api.PipelineVersion{
+		Name: "version_for_run",
+		ResourceReferences: []*api.ResourceReference{
+			&api.ResourceReference{
+				Key: &api.ResourceKey{
+					Id:   pipeline.UUID,
+					Type: api.ResourceType_PIPELINE,
+				},
+				Relationship: api.Relationship_OWNER,
+			},
+		},
+	}, []byte(testWorkflow.ToStringForStore()))
+	assert.Nil(t, err)
+
+	// The pipeline specified via pipeline id will be converted to this
+	// pipeline's default version, which will be used to create run.
 	newJob, err := manager.CreateJob(job)
 	expectedJob := &model.Job{
 		UUID:           "123e4567-e89b-12d3-a456-426655440000",
 		DisplayName:    "j1",
 		Name:           "j1",
 		Namespace:      "ns1",
+		ServiceAccount: "pipeline-runner",
 		Enabled:        true,
-		CreatedAtInSec: 3,
-		UpdatedAtInSec: 3,
+		CreatedAtInSec: 4,
+		UpdatedAtInSec: 4,
 		Conditions:     "NO_STATUS",
 		PipelineSpec: model.PipelineSpec{
 			PipelineId:           pipeline.UUID,
@@ -945,6 +1001,14 @@ func TestCreateJob_ThroughPipelineID(t *testing.T) {
 				ReferenceName: "e1",
 				ReferenceType: common.Experiment,
 				Relationship:  common.Owner,
+			},
+			{
+				ResourceUUID:  "123e4567-e89b-12d3-a456-426655440000",
+				ResourceType:  common.Job,
+				ReferenceUUID: version.UUID,
+				ReferenceName: version.Name,
+				ReferenceType: common.PipelineVersion,
+				Relationship:  common.Creator,
 			},
 		},
 	}
@@ -998,6 +1062,7 @@ func TestCreateJob_ThroughPipelineVersion(t *testing.T) {
 		DisplayName:    "j1",
 		Name:           "j1",
 		Namespace:      "ns1",
+		ServiceAccount: "pipeline-runner",
 		Enabled:        true,
 		CreatedAtInSec: 4,
 		UpdatedAtInSec: 4,
@@ -1108,6 +1173,7 @@ func TestEnableJob(t *testing.T) {
 		DisplayName:    "j1",
 		Name:           "j1",
 		Namespace:      "ns1",
+		ServiceAccount: "pipeline-runner",
 		Enabled:        false,
 		CreatedAtInSec: 2,
 		UpdatedAtInSec: 3,
@@ -1220,6 +1286,7 @@ func TestReportWorkflowResource_ScheduledWorkflowIDEmpty_Success(t *testing.T) {
 		DisplayName:    "run1",
 		Name:           "workflow-name",
 		Namespace:      "ns1",
+		ServiceAccount: "pipeline-runner",
 		StorageState:   api.Run_STORAGESTATE_AVAILABLE.String(),
 		CreatedAtInSec: 2,
 		Conditions:     "Running",
@@ -1454,12 +1521,13 @@ func TestReportScheduledWorkflowResource_Success(t *testing.T) {
 	assert.Nil(t, err)
 
 	expectedJob := &model.Job{
-		Name:        "MY_NAME",
-		DisplayName: "j1",
-		Namespace:   "MY_NAMESPACE",
-		Enabled:     false,
-		UUID:        job.UUID,
-		Conditions:  "NO_STATUS",
+		Name:           "MY_NAME",
+		DisplayName:    "j1",
+		Namespace:      "MY_NAMESPACE",
+		ServiceAccount: "pipeline-runner",
+		Enabled:        false,
+		UUID:           job.UUID,
+		Conditions:     "NO_STATUS",
 		Trigger: model.Trigger{
 			CronSchedule: model.CronSchedule{
 				Cron: util.StringPointer(""),
@@ -1525,38 +1593,6 @@ func TestReportScheduledWorkflowResource_Error(t *testing.T) {
 	assert.Contains(t, err.(*util.UserError).String(), "database is closed")
 }
 
-func TestGetWorkflowSpecBytes_ByPipelineID(t *testing.T) {
-	store, manager, pipeline := initWithPipeline(t)
-	defer store.Close()
-	spec := &api.PipelineSpec{
-		PipelineId: pipeline.UUID,
-		Parameters: []*api.Parameter{
-			{Name: "param1", Value: "world"},
-		},
-	}
-	workflowBytes, err := manager.getWorkflowSpecBytes(spec)
-	assert.Nil(t, err)
-	var actualWorkflow v1alpha1.Workflow
-	json.Unmarshal(workflowBytes, &actualWorkflow)
-	assert.Equal(t, testWorkflow.Get(), &actualWorkflow)
-}
-
-func TestGetWorkflowSpecBytes_ByPipelineID_NotExist(t *testing.T) {
-	store := NewFakeClientManagerOrFatal(util.NewFakeTimeForEpoch())
-	defer store.Close()
-	manager := NewResourceManager(store)
-
-	spec := &api.PipelineSpec{
-		PipelineId: "1",
-		Parameters: []*api.Parameter{
-			{Name: "param1", Value: "world"},
-		},
-	}
-	_, err := manager.getWorkflowSpecBytes(spec)
-	assert.NotNil(t, err)
-	assert.Contains(t, err.Error(), "not found")
-}
-
 func TestGetWorkflowSpecBytes_ByWorkflowManifest(t *testing.T) {
 	store := NewFakeClientManagerOrFatal(util.NewFakeTimeForEpoch())
 	defer store.Close()
@@ -1568,7 +1604,7 @@ func TestGetWorkflowSpecBytes_ByWorkflowManifest(t *testing.T) {
 			{Name: "param1", Value: "world"},
 		},
 	}
-	workflowBytes, err := manager.getWorkflowSpecBytes(spec)
+	workflowBytes, err := manager.getWorkflowSpecBytesFromPipelineSpec(spec)
 	assert.Nil(t, err)
 	assert.Equal(t, []byte("some manifest"), workflowBytes)
 }
@@ -1583,7 +1619,7 @@ func TestGetWorkflowSpecBytes_MissingSpec(t *testing.T) {
 			{Name: "param1", Value: "world"},
 		},
 	}
-	_, err := manager.getWorkflowSpecBytes(spec)
+	_, err := manager.getWorkflowSpecBytesFromPipelineSpec(spec)
 	assert.NotNil(t, err)
 	assert.Contains(t, err.Error(), "Please provide a valid pipeline spec")
 }
@@ -2312,6 +2348,7 @@ func TestCreateDefaultExperiment(t *testing.T) {
 		Name:           "Default",
 		Description:    "All runs created without specifying an experiment will be grouped here.",
 		Namespace:      "",
+		StorageState:   "STORAGESTATE_AVAILABLE",
 	}
 	assert.Equal(t, expectedExperiment, experiment)
 }
@@ -2335,6 +2372,7 @@ func TestCreateDefaultExperiment_MultiUser(t *testing.T) {
 		Name:           "Default",
 		Description:    "All runs created without specifying an experiment will be grouped here.",
 		Namespace:      "",
+		StorageState:   "STORAGESTATE_AVAILABLE",
 	}
 	assert.Equal(t, expectedExperiment, experiment)
 }

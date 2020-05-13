@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 
 import kfp
+import json
+import copy
 from kfp import components
 from kfp import dsl
 from kfp.aws import use_aws_secret
@@ -10,6 +12,33 @@ sagemaker_train_op = components.load_component_from_file('../../../../components
 sagemaker_model_op = components.load_component_from_file('../../../../components/aws/sagemaker/model/component.yaml')
 sagemaker_deploy_op = components.load_component_from_file('../../../../components/aws/sagemaker/deploy/component.yaml')
 sagemaker_batch_transform_op = components.load_component_from_file('../../../../components/aws/sagemaker/batch_transform/component.yaml')
+
+
+hpoChannels = []
+trainChannels = []
+
+channelObj = {
+    'ChannelName': '',
+    'DataSource': {
+        'S3DataSource': {
+            'S3Uri': '',
+            'S3DataType': 'S3Prefix',
+            'S3DataDistributionType': 'FullyReplicated'
+        }
+    },
+    'CompressionType': 'None',
+    'RecordWrapperType': 'None',
+    'InputMode': 'File'
+}
+
+channelObj['ChannelName'] = 'train'
+channelObj['DataSource']['S3DataSource']['S3Uri'] = 's3://kubeflow-pipeline-data/mnist_kmeans_example/train_data'
+hpoChannels.append(copy.deepcopy(channelObj))
+trainChannels.append(copy.deepcopy(channelObj))
+channelObj['ChannelName'] = 'test'
+channelObj['DataSource']['S3DataSource']['S3Uri'] = 's3://kubeflow-pipeline-data/mnist_kmeans_example/test_data'
+hpoChannels.append(copy.deepcopy(channelObj))
+
 
 @dsl.pipeline(
     name='MNIST Classification pipeline',
@@ -22,71 +51,37 @@ def mnist_classification(region='us-west-2',
     hpo_metric_name='test:msd',
     hpo_metric_type='Minimize',
     hpo_early_stopping_type='Off',
-    hpo_static_parameters='{"k": "10", "feature_dim": "784"}',
-    hpo_integer_parameters='[{"Name": "mini_batch_size", "MinValue": "500", "MaxValue": "600"}, {"Name": "extra_center_factor", "MinValue": "10", "MaxValue": "20"}]',
-    hpo_continuous_parameters='[]',
-    hpo_categorical_parameters='[{"Name": "init_method", "Values": ["random", "kmeans++"]}]',
-    hpo_channels='[{"ChannelName": "train", \
-                "DataSource": { \
-                    "S3DataSource": { \
-                        "S3Uri": "s3://kubeflow-pipeline-data/mnist_kmeans_example/train_data",  \
-                        "S3DataType": "S3Prefix", \
-                        "S3DataDistributionType": "FullyReplicated" \
-                        } \
-                    }, \
-                "ContentType": "", \
-                "CompressionType": "None", \
-                "RecordWrapperType": "None", \
-                "InputMode": "File"}, \
-               {"ChannelName": "test", \
-                "DataSource": { \
-                    "S3DataSource": { \
-                        "S3Uri": "s3://kubeflow-pipeline-data/mnist_kmeans_example/test_data", \
-                        "S3DataType": "S3Prefix", \
-                        "S3DataDistributionType": "FullyReplicated" \
-                        } \
-                    }, \
-                "ContentType": "", \
-                "CompressionType": "None", \
-                "RecordWrapperType": "None", \
-                "InputMode": "File"}]',
-    hpo_spot_instance='False',
-    hpo_max_wait_time='3600',
-    hpo_checkpoint_config='{}',
+    hpo_static_parameters={"k": "10", "feature_dim": "784"},
+    hpo_integer_parameters=[{"Name": "mini_batch_size", "MinValue": "500", "MaxValue": "600"}, {"Name": "extra_center_factor", "MinValue": "10", "MaxValue": "20"}],
+    hpo_continuous_parameters=[],
+    hpo_categorical_parameters=[{"Name": "init_method", "Values": ["random", "kmeans++"]}],
+    hpo_channels=hpoChannels,
+    hpo_spot_instance=False,
+    hpo_max_wait_time=3600,
+    hpo_checkpoint_config={},
     output_location='s3://kubeflow-pipeline-data/mnist_kmeans_example/output',
     output_encryption_key='',
     instance_type='ml.p2.16xlarge',
-    instance_count='1',
-    volume_size='50',
-    hpo_max_num_jobs='9',
-    hpo_max_parallel_jobs='3',
-    max_run_time='3600',
+    instance_count=1,
+    volume_size=50,
+    hpo_max_num_jobs=9,
+    hpo_max_parallel_jobs=3,
+    max_run_time=3600,
     endpoint_url='',
-    network_isolation='True',
-    traffic_encryption='False',
-    train_channels='[{"ChannelName": "train", \
-                "DataSource": { \
-                    "S3DataSource": { \
-                        "S3Uri": "s3://kubeflow-pipeline-data/mnist_kmeans_example/train_data",  \
-                        "S3DataType": "S3Prefix", \
-                        "S3DataDistributionType": "FullyReplicated" \
-                        } \
-                    }, \
-                "ContentType": "", \
-                "CompressionType": "None", \
-                "RecordWrapperType": "None", \
-                "InputMode": "File"}]',
-    train_spot_instance='False',
-    train_max_wait_time='3600',
-    train_checkpoint_config='{}',
+    network_isolation=True,
+    traffic_encryption=False,
+    train_channels=trainChannels,
+    train_spot_instance=False,
+    train_max_wait_time=3600,
+    train_checkpoint_config={},
     batch_transform_instance_type='ml.m4.xlarge',
     batch_transform_input='s3://kubeflow-pipeline-data/mnist_kmeans_example/input',
     batch_transform_data_type='S3Prefix',
     batch_transform_content_type='text/csv',
     batch_transform_compression_type='None',
     batch_transform_ouput='s3://kubeflow-pipeline-data/mnist_kmeans_example/output',
-    batch_transform_max_concurrent='4',
-    batch_transform_max_payload='6',
+    batch_transform_max_concurrent=4,
+    batch_transform_max_payload=6,
     batch_strategy='MultiRecord',
     batch_transform_split_type='Line',
     role_arn=''
