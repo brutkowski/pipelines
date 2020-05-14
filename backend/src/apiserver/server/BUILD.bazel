@@ -17,7 +17,7 @@ go_library(
         "util.go",
         "visualization_server.go",
     ],
-    importpath = "github.com/kubeflow/pipelines/backend/src/apiserver/server",
+    importpath = "github.com/brutkowski/pipelines/backend/src/apiserver/server",
     visibility = ["//visibility:public"],
     deps = [
         "//backend/api:go_default_library",
