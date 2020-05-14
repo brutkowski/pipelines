@@ -17,7 +17,7 @@ go_library(
         "swf_fake.go",
         "workflow_fake.go",
     ],
-    importpath = "github.com/kubeflow/pipelines/backend/src/apiserver/client",
+    importpath = "github.com/brutkowski/pipelines/backend/src/apiserver/client",
     visibility = ["//visibility:public"],
     deps = [
         "//backend/src/common/util:go_default_library",
