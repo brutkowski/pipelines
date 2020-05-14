@@ -8,7 +8,7 @@ go_library(
         "resource_manager.go",
         "resource_manager_util.go",
     ],
-    importpath = "github.com/kubeflow/pipelines/backend/src/apiserver/resource",
+    importpath = "github.com/brutkowski/pipelines/backend/src/apiserver/resource",
     visibility = ["//visibility:public"],
     deps = [
         "//backend/api:go_default_library",
