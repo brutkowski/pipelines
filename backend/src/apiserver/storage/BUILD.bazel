@@ -18,7 +18,7 @@ go_library(
         "run_store.go",
         "sql_null_util.go",
     ],
-    importpath = "github.com/kubeflow/pipelines/backend/src/apiserver/storage",
+    importpath = "github.com/brutkowski/pipelines/backend/src/apiserver/storage",
     visibility = ["//visibility:public"],
     deps = [
         "//backend/api:go_default_library",
