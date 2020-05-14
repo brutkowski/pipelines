@@ -26,7 +26,7 @@ go_test(
         "resource_reference_test.go",
     ],
     embed = [":go_default_library"],
-    importpath = "github.com/kubeflow/pipelines/backend/src/apiserver/model",
+    importpath = "github.com/brutkowski/pipelines/backend/src/apiserver/model",
     visibility = ["//visibility:public"],
     deps = [
         "//backend/api:go_default_library",
